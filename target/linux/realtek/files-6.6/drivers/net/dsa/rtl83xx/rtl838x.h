@@ -9,6 +9,7 @@
 #define RTL838X_MAC_PORT_CTRL(port)		(0xd560 + (((port) << 7)))
 #define RTL839X_MAC_PORT_CTRL(port)		(0x8004 + (((port) << 7)))
 #define RTL930X_MAC_PORT_CTRL(port)		(0x3260 + (((port) << 6)))
+#define RTL930X_MAC_L2_PORT_MAX_LEN_CTRL(port)  (0x326C + (((port) << 6)))
 #define RTL931X_MAC_PORT_CTRL			(0x6004)
 
 #define RTL930X_MAC_L2_PORT_CTRL(port)		(0x3268 + (((port) << 6)))
@@ -605,6 +606,7 @@ typedef enum {
 #define MAX_HOST_ROUTES 1536
 #define MAX_INTF_MTUS 8
 #define DEFAULT_MTU 1536
+#define MAX_MTU 10000
 #define MAX_INTERFACES 100
 #define MAX_ROUTER_MACS 64
 #define L3_EGRESS_DMACS 2048

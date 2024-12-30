@@ -779,8 +779,11 @@ static void rtl839x_hw_en_rxtx(struct rtl838x_eth_priv *priv)
 
 static void rtl93xx_hw_en_rxtx(struct rtl838x_eth_priv *priv)
 {
-	/* Setup CPU-Port: RX Buffer truncated at DEFAULT_MTU Bytes */
-	sw_w32((DEFAULT_MTU << 16) | RX_TRUNCATE_EN_93XX, priv->r->dma_if_ctrl);
+	/* Setup CPU-Port: RX Buffer truncated at DEFAULT_MTU Bytes (except for 930x to enable jumbo frames) */
+	if (priv->family_id == RTL9300_FAMILY_ID)
+		sw_w32((DEFAULT_MTU << 16), priv->r->dma_if_ctrl);
+	else 
+		sw_w32((DEFAULT_MTU << 16) | RX_TRUNCATE_EN_93XX, priv->r->dma_if_ctrl);
 
 	for (int i = 0; i < priv->rxrings; i++) {
 		int pos = (i % 3) * 10;
@@ -2200,7 +2203,7 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 {
 	struct device_node *mii_np, *dn;
 	struct rtl838x_bus_priv *bus_priv;
-	u32 pn;
+	u32 pn, mtu;
 	int i, ret;
 
 	pr_debug("%s called\n", __func__);
@@ -2332,6 +2335,11 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 		if (of_get_phy_mode(dn, &priv->interfaces[pn]))
 			priv->interfaces[pn] = PHY_INTERFACE_MODE_NA;
 		pr_debug("%s phy mode of port %d is %s\n", __func__, pn, phy_modes(priv->interfaces[pn]));
+ 		if (of_property_read_u32(dn, "max-frame-size", &mtu))
+ 			continue;
+ 		priv->netdev->max_mtu = mtu;
+ 		pr_info("Max mtu set to %d for %s\n", priv->netdev->max_mtu, priv->netdev->name);
+
 	}
 
 	snprintf(priv->mii_bus->id, MII_BUS_ID_SIZE, "%pOFn", mii_np);
@@ -2526,7 +2534,7 @@ static int __init rtl838x_eth_probe(struct platform_device *pdev)
 
 	dev->ethtool_ops = &rtl838x_ethtool_ops;
 	dev->min_mtu = ETH_ZLEN;
-	dev->max_mtu = DEFAULT_MTU;
+	dev->max_mtu = MAX_MTU;
 	dev->features = NETIF_F_RXCSUM | NETIF_F_HW_CSUM;
 	dev->hw_features = NETIF_F_RXCSUM;
 

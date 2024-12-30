@@ -686,6 +686,7 @@ static void rtl83xx_phylink_get_caps(struct dsa_switch *ds, int port,
 	__set_bit(PHY_INTERFACE_MODE_XGMII, config->supported_interfaces);
 	__set_bit(PHY_INTERFACE_MODE_USXGMII, config->supported_interfaces);
 	__set_bit(PHY_INTERFACE_MODE_1000BASEX, config->supported_interfaces);
+	__set_bit(PHY_INTERFACE_MODE_10GBASER, config->supported_interfaces);
 }
 
 static void rtl83xx_phylink_mac_config(struct dsa_switch *ds, int port,
@@ -1371,6 +1372,55 @@ void rtl930x_fast_age(struct dsa_switch *ds, int port)
 	do { } while (sw_r32(priv->r->l2_tbl_flush_ctrl) & BIT(30));
 
 	mutex_unlock(&priv->reg_mutex);
+}
+
+static int rtl930x_change_mtu(struct dsa_switch *ds, int port, int new_mtu)
+{
+        struct rtl838x_switch_priv *priv = ds->priv;
+
+        pr_info("Change MTU on port %d to %d\n", port, new_mtu);
+        int old_mtu;
+        u32 tagBit = 0;
+
+        if (port != 0) { // need to set port 0 to be new_mtu + 4
+                u32 old_port0_mtu_masked = sw_r32(RTL930X_MAC_L2_PORT_MAX_LEN_CTRL(0));
+                int oldport0len1 = (0xffff0000 & old_port0_mtu_masked);
+                int oldport0len2 = (0x0000ffff & old_port0_mtu_masked);
+                pr_info("Old values on port %d, %d\n", oldport0len1, oldport0len2);
+                if (oldport0len2 < (new_mtu + 4)){
+                        rtl930x_change_mtu(ds, 0, (new_mtu + 4));
+                }
+        }
+        u32 old_mtu_masked = sw_r32(RTL930X_MAC_L2_PORT_MAX_LEN_CTRL(port));
+        int oldlen1 = (0xffff0000 & old_mtu_masked);
+        int oldlen2 = (0x0000ffff & old_mtu_masked);
+        pr_info("Old values on port %d, %d\n", oldlen1, oldlen2);
+        if (oldlen2 > MAX_MTU)
+                old_mtu = DEFAULT_MTU;
+        else
+                old_mtu = oldlen2;
+
+        mutex_lock(&priv->reg_mutex);
+
+        if (port == 0)
+           tagBit = (1 << 28);
+
+        pr_info("Sri port:%d, addr:%04x, value:%08x\n",port, tagBit + (new_mtu << 14) + (old_mtu), RTL930X_MAC_L2_PORT_MAX_LEN_CTRL(port));
+        sw_w32(tagBit + (new_mtu << 14) + (old_mtu), RTL930X_MAC_L2_PORT_MAX_LEN_CTRL(port));
+
+        pr_info("Sri port:%d, addr:%04x, value:%08x\n",port,tagBit + (new_mtu << 14) + (new_mtu), RTL930X_MAC_L2_PORT_MAX_LEN_CTRL(port));
+        sw_w32(tagBit + (new_mtu << 14) + (new_mtu), RTL930X_MAC_L2_PORT_MAX_LEN_CTRL(port));
+
+        mutex_unlock(&priv->reg_mutex);
+        return 0;
+}
+
+static int rtl930x_max_mtu(struct dsa_switch *ds, int port)
+{
+        /* The max MTU is 10000 bytes, so we subtract the CPU tag
+         * and the max presented to the system is 9996 bytes.
+         */
+        return MAX_MTU-4;
 }
 
 static int rtl83xx_vlan_filtering(struct dsa_switch *ds, int port,
@@ -2282,4 +2332,7 @@ const struct dsa_switch_ops rtl930x_switch_ops = {
 
 	.port_pre_bridge_flags	= rtl83xx_port_pre_bridge_flags,
 	.port_bridge_flags	= rtl83xx_port_bridge_flags,
+
+        .port_change_mtu        = rtl930x_change_mtu,
+        .port_max_mtu           = rtl930x_max_mtu,
 };

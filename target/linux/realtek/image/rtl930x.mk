@@ -1,4 +1,22 @@
 # SPDX-License-Identifier: GPL-2.0-only
+define Device/sodola_sl-swtgw2c8f
+  KERNEL := \
+        kernel-bin | \
+        append-dtb | \
+        lzma | \
+        uImage lzma
+  KERNEL_INITRAMFS := \
+        kernel-bin | \
+        append-dtb | \
+        lzma | \
+        uImage lzma
+  SOC := rtl9303
+  IMAGE_SIZE := 13312k
+  UIMAGE_MAGIC := 0x83800000
+  UIMAGE_NAME := 9.9.9.9
+  DEVICE_VENDOR := SODOLA
+endef
+TARGET_DEVICES += sodola_sl-swtgw2c8f
 
 define Device/zyxel_xgs1250-12
   SOC := rtl9302

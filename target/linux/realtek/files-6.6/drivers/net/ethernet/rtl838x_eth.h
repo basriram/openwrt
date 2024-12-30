@@ -219,6 +219,9 @@
 /* Default MTU with jumbo frames support */
 #define DEFAULT_MTU 9000
 
+/* Max MTU for RTL9303 devices is 10000 */
+#define MAX_MTU 10000
+
 inline int rtl838x_mac_port_ctrl(int p)
 {
 	return RTL838X_MAC_PORT_CTRL + (p << 7);
