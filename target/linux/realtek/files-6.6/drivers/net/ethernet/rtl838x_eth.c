@@ -676,9 +676,9 @@ static void rtl838x_hw_reset(struct rtl838x_eth_priv *priv)
 
 	/* Reset NIC (SW_NIC_RST) and queues (SW_Q_RST) */
 	if (priv->family_id == RTL9300_FAMILY_ID || priv->family_id == RTL9310_FAMILY_ID)
-		reset_mask = 0x6;
+		reset_mask = RTL93XX_RST_GLB_CTRL_SW_NIC_RST | RTL93XX_RST_GLB_CTRL_SW_Q_RST;
 	else
-		reset_mask = 0xc;
+		reset_mask = RTL83XX_RST_GLB_CTRL_SW_NIC_RST | RTL83XX_RST_GLB_CTRL_SW_Q_RST;
 
 	sw_w32_mask(0, reset_mask, priv->r->rst_glb_ctrl);
 
@@ -781,7 +781,7 @@ static void rtl93xx_hw_en_rxtx(struct rtl838x_eth_priv *priv)
 {
 	/* Setup CPU-Port: RX Buffer truncated at DEFAULT_MTU Bytes (except for 930x to enable jumbo frames) */
 	if (priv->family_id == RTL9300_FAMILY_ID)
-		sw_w32((DEFAULT_MTU << 16), priv->r->dma_if_ctrl);
+		sw_w32((DEFAULT_MTU << 16) | RX_TRUNCATE_EN_93XX, priv->r->dma_if_ctrl);
 	else 
 		sw_w32((DEFAULT_MTU << 16) | RX_TRUNCATE_EN_93XX, priv->r->dma_if_ctrl);
 
@@ -1942,6 +1942,8 @@ static int rtmdio_93xx_write(struct mii_bus *bus, int addr, int regnum, u16 val)
 	if (regnum == RTMDIO_PAGE_SELECT)
 		bus_priv->page[addr] = val;
 
+	pr_debug("%s r_PHY(adr=%d, pag=%d, reg=%d, val=%d)\n", __func__, addr, page, regnum, val);
+
 	if (!bus_priv->raw[addr] && (regnum != RTMDIO_PAGE_SELECT || page == bus_priv->rawpage)) {
 		bus_priv->raw[addr] = (page == bus_priv->rawpage);
 		if (eth_priv->phy_is_internal[addr]) {
@@ -1954,8 +1956,7 @@ static int rtmdio_93xx_write(struct mii_bus *bus, int addr, int regnum, u16 val)
 		}
 
 		err = (*bus_priv->write_phy)(addr, page, regnum, val);
-		pr_debug("wr_PHY(adr=%d, pag=%d, reg=%d, val=%d) err = %d\n",
-			 addr, page, regnum, val, err);
+		pr_debug("wr_PHY(adr=%d, pag=%d, reg=%d, val=%d) err = %d\n", addr, page, regnum, val, err);
 	}
 
 	bus_priv->raw[addr] = false;
@@ -2004,7 +2005,7 @@ static int rtmdio_930x_reset(struct mii_bus *bus)
 	u32 private_poll_mask = 0;
 	u32 v;
 	bool uses_usxgmii = false; /* For the Aquantia PHYs */
-	bool uses_hisgmii = false; /* For the RTL8221/8226 */
+	bool uses_hisgmii = true; /* For the RTL8221/8226 */
 
 	/* Mapping of port to phy-addresses on an SMI bus */
 	poll_sel[0] = poll_sel[1] = 0;
@@ -2069,6 +2070,8 @@ static int rtmdio_930x_reset(struct mii_bus *bus)
 	 * define different ways of polling a PHY. The below is for the Aquantia PHYs of
 	 * the XGS1250 and the RTL8226 of the XGS1210
 	 */
+	pr_info(" usexgmii %d, usehisgmi:%d\n", uses_usxgmii, uses_hisgmii);
+
 	if (uses_usxgmii) {
 		sw_w32(0x01010000, RTL930X_SMI_10GPHY_POLLING_REG0_CFG);
 		sw_w32(0x01E7C400, RTL930X_SMI_10GPHY_POLLING_REG9_CFG);
@@ -2203,10 +2206,11 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 {
 	struct device_node *mii_np, *dn;
 	struct rtl838x_bus_priv *bus_priv;
-	u32 pn, mtu;
+	//u32 pn, mtu;
+	u32 pn;
 	int i, ret;
 
-	pr_debug("%s called\n", __func__);
+	pr_info("%s called\n", __func__);
 	mii_np = of_get_child_by_name(priv->pdev->dev.of_node, "mdio-bus");
 
 	if (!mii_np) {
@@ -2232,6 +2236,7 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 		bus_priv->raw[i] = false;
 	}
 	bus_priv->extaddr = -1;
+	pr_info("Sri family id: %4x \n", priv->family_id);
 
 	switch(priv->family_id) {
 	case RTL8380_FAMILY_ID:
@@ -2316,7 +2321,8 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 
 		if (priv->phy_is_internal[pn] && priv->sds_id[pn] >= 0)
 			priv->smi_bus[pn]= -1;
-		else if (of_device_is_compatible(dn, "ethernet-phy-ieee802.3-c45"))
+
+		if (of_device_is_compatible(dn, "ethernet-phy-ieee802.3-c45"))
 			priv->smi_bus_isc45[priv->smi_bus[pn]] = true;
 	}
 
@@ -2329,16 +2335,16 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 	for_each_node_by_name(dn, "port") {
 		if (of_property_read_u32(dn, "reg", &pn))
 			continue;
-		pr_debug("%s Looking at port %d\n", __func__, pn);
+		pr_info("%s Looking at port %d\n", __func__, pn);
 		if (pn > priv->cpu_port)
 			continue;
 		if (of_get_phy_mode(dn, &priv->interfaces[pn]))
 			priv->interfaces[pn] = PHY_INTERFACE_MODE_NA;
-		pr_debug("%s phy mode of port %d is %s\n", __func__, pn, phy_modes(priv->interfaces[pn]));
- 		if (of_property_read_u32(dn, "max-frame-size", &mtu))
- 			continue;
- 		priv->netdev->max_mtu = mtu;
- 		pr_info("Max mtu set to %d for %s\n", priv->netdev->max_mtu, priv->netdev->name);
+		pr_info("%s phy mode of port %d is %s\n", __func__, pn, phy_modes(priv->interfaces[pn]));
+ 		//if (of_property_read_u32(dn, "max-frame-size", &mtu))
+ 		//	continue;
+ 		//priv->netdev->max_mtu = mtu;
+ 		//pr_info("Max mtu set to %d for %s\n", priv->netdev->max_mtu, priv->netdev->name);
 
 	}
 
@@ -2534,7 +2540,8 @@ static int __init rtl838x_eth_probe(struct platform_device *pdev)
 
 	dev->ethtool_ops = &rtl838x_ethtool_ops;
 	dev->min_mtu = ETH_ZLEN;
-	dev->max_mtu = MAX_MTU;
+//	dev->max_mtu = MAX_MTU;
+	dev->max_mtu = 1536;
 	dev->features = NETIF_F_RXCSUM | NETIF_F_HW_CSUM;
 	dev->hw_features = NETIF_F_RXCSUM;
 

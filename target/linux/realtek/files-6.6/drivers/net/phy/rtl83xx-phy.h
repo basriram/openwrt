@@ -60,6 +60,7 @@ struct __attribute__ ((__packed__)) fw_header {
 #define RTL930X_SDS_INDACS_CMD			(0x03B0)
 #define RTL930X_SDS_INDACS_DATA			(0x03B4)
 #define RTL930X_MAC_FORCE_MODE_CTRL		(0xCA1C)
+#define RTL930X_SDS_MODE_SEL_MASK                       GENMASK(4, 0)
 
 /* Registers of the internal SerDes of the 9310 */
 #define RTL931X_SERDES_INDRT_ACCESS_CTRL	(0x5638)

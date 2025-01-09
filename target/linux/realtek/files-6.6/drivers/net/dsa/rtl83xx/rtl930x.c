@@ -773,7 +773,7 @@ int rtl930x_read_phy(u32 port, u32 page, u32 reg, u32 *val)
 	} while ( v & 0x1);
 
 	if (v & BIT(25)) {
-		pr_debug("Error reading phy %d, register %d\n", port, reg);
+		pr_info("Error reading phy %d, register %d\n", port, reg);
 		err = -EIO;
 	}
 	*val = (sw_r32(RTL930X_SMI_ACCESS_PHY_CTRL_2) & 0xffff);

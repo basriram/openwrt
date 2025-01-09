@@ -123,6 +123,7 @@ int rtl9300_sds_power(int mac, int val);
 void rtl9300_sds_rst(int sds_num, u32 mode);
 int rtl9300_serdes_setup(int port, int sds_num, phy_interface_t phy_mode);
 void rtl930x_print_matrix(void);
+int rtl9300_rtl8226_mode_set(int port, int sds_num, phy_interface_t phy_mode);
 
 /* RTL931x-specific */
 irqreturn_t rtl931x_switch_irq(int irq, void *dev_id);

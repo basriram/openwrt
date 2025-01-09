@@ -571,6 +571,9 @@ static void rtl93xx_pcs_get_state(struct phylink_pcs *pcs,
 		state->duplex = 1;
 
 	speed = priv->r->get_port_reg_le(priv->r->mac_link_spd_sts(port));
+	pr_info("%s: SRI get port reg le speed for port %llx is %d\n", __func__, speed, port);
+
+	//if (speed == -1) speed = 1000; //sri hardcoding again
 	speed >>= (port % 8) << 2;
 	switch (speed & 0xf) {
 	case 0:
@@ -594,6 +597,7 @@ static void rtl93xx_pcs_get_state(struct phylink_pcs *pcs,
 		state->speed = SPEED_5000;
 		break;
 	default:
+		state->speed = SPEED_1000;
 		pr_err("%s: unknown speed: %d\n", __func__, (u32)speed & 0xf);
 	}
 
@@ -604,7 +608,7 @@ static void rtl93xx_pcs_get_state(struct phylink_pcs *pcs,
 			state->duplex = 1;
 	}
 
-	pr_debug("%s: speed is: %d %d\n", __func__, (u32)speed & 0xf, state->speed);
+	pr_info("%s: speed is: %d %d\n", __func__, (u32)speed & 0xf, state->speed);
 	state->pause &= (MLO_PAUSE_RX | MLO_PAUSE_TX);
 	if (priv->r->get_port_reg_le(priv->r->mac_rx_pause_sts) & BIT_ULL(port))
 		state->pause |= MLO_PAUSE_RX;
@@ -687,6 +691,7 @@ static void rtl83xx_phylink_get_caps(struct dsa_switch *ds, int port,
 	__set_bit(PHY_INTERFACE_MODE_USXGMII, config->supported_interfaces);
 	__set_bit(PHY_INTERFACE_MODE_1000BASEX, config->supported_interfaces);
 	__set_bit(PHY_INTERFACE_MODE_10GBASER, config->supported_interfaces);
+	__set_bit(PHY_INTERFACE_MODE_2500BASEX, config->supported_interfaces);
 }
 
 static void rtl83xx_phylink_mac_config(struct dsa_switch *ds, int port,
@@ -798,7 +803,7 @@ static void rtl93xx_phylink_mac_config(struct dsa_switch *ds, int port,
 {
 	struct rtl838x_switch_priv *priv = ds->priv;
 	int sds_num;
-	u32 reg;
+	//u32 reg;
 
 	pr_info("%s port %d, mode %x, phy-mode: %s, speed %d, link %d\n", __func__,
 		port, mode, phy_modes(state->interface), state->speed, state->link);
@@ -816,48 +821,6 @@ static void rtl93xx_phylink_mac_config(struct dsa_switch *ds, int port,
 	    (state->interface == PHY_INTERFACE_MODE_1000BASEX ||
 	     state->interface == PHY_INTERFACE_MODE_10GBASER))
 		rtl9300_serdes_setup(port, sds_num, state->interface);
-
-	reg = sw_r32(priv->r->mac_force_mode_ctrl(port));
-	reg &= ~(0xf << 3);
-
-	switch (state->speed) {
-	case SPEED_10000:
-		reg |= 4 << 3;
-		break;
-	case SPEED_5000:
-		reg |= 6 << 3;
-		break;
-	case SPEED_2500:
-		reg |= 5 << 3;
-		break;
-	case SPEED_1000:
-		reg |= 2 << 3;
-		break;
-	case SPEED_100:
-		reg |= 1 << 3;
-		break;
-	default:
-		/* Also covers 10M */
-		break;
-	}
-
-	if (state->link)
-		reg |= RTL930X_FORCE_LINK_EN;
-
-	if (priv->lagmembers & BIT_ULL(port))
-		reg |= RTL930X_DUPLEX_MODE | RTL930X_FORCE_LINK_EN;
-
-	if (state->duplex == DUPLEX_FULL)
-		reg |= RTL930X_DUPLEX_MODE;
-	else
-		reg &= ~RTL930X_DUPLEX_MODE; /* Clear duplex bit otherwise */
-
-	if (priv->ports[port].phy_is_integrated)
-		reg &= ~RTL930X_FORCE_EN; /* Clear MAC_FORCE_EN to allow SDS-MAC link */
-	else
-		reg |= RTL930X_FORCE_EN;
-
-	sw_w32(reg, priv->r->mac_force_mode_ctrl(port));
 }
 
 static void rtl83xx_phylink_mac_link_down(struct dsa_switch *ds, int port,
@@ -964,6 +927,85 @@ static void rtl93xx_phylink_mac_link_up(struct dsa_switch *ds, int port,
 				   bool tx_pause, bool rx_pause)
 {
 	struct rtl838x_switch_priv *priv = ds->priv;
+	struct dsa_port *dp = dsa_to_port(ds, port);
+//	int sds_num;
+	u32 reg;
+//	sds_num = priv->ports[port].sds_num;
+//	pr_info("%s SDS is %d\n", __func__, sds_num);
+//	if (sds_num >= 0 &&
+	 //   (state->interface == PHY_INTERFACE_MODE_1000BASEX ||
+	   //  state->interface == PHY_INTERFACE_MODE_10GBASER))
+	//	rtl9300_serdes_setup(port, sds_num, state->interface);
+
+	reg = sw_r32(priv->r->mac_force_mode_ctrl(port));
+
+	int sds_num;
+	sds_num = priv->ports[port].sds_num;
+	pr_info("%s SDS is %d\n", __func__, sds_num);
+	if (sds_num > 0 && interface == PHY_INTERFACE_MODE_HSGMII) {
+		if ((speed == SPEED_2500))
+			rtl9300_rtl8226_mode_set(port, sds_num, PHY_INTERFACE_MODE_HSGMII);
+		if ((speed != SPEED_2500))
+			rtl9300_rtl8226_mode_set(port, sds_num, PHY_INTERFACE_MODE_SGMII);
+	}
+
+
+	reg &= ~(0xf << 3);
+
+	switch (speed) {
+	case SPEED_10000:
+		reg |= 4 << 3;
+		break;
+	case SPEED_5000:
+		reg |= 6 << 3;
+		break;
+	case SPEED_2500:
+		reg |= 5 << 3;
+		break;
+	case SPEED_1000:
+		reg |= 2 << 3;
+		break;
+	case SPEED_100:
+		reg |= 1 << 3;
+		break;
+	default:
+		/* Also covers 10M */
+		reg |= 2 << 3; //Sri hard coding to speed 1000 for now
+		break;
+	}
+
+	reg |= RTL930X_FORCE_LINK_EN;
+
+	if (priv->lagmembers & BIT_ULL(port))
+		reg |= RTL930X_DUPLEX_MODE | RTL930X_FORCE_LINK_EN;
+
+	if (duplex == DUPLEX_FULL)
+		reg |= RTL930X_DUPLEX_MODE;
+	else
+		reg &= ~RTL930X_DUPLEX_MODE; /* Clear duplex bit otherwise */
+
+	if (priv->ports[port].phy_is_integrated)
+		reg &= ~RTL930X_FORCE_EN; /* Clear MAC_FORCE_EN to allow SDS-MAC link */
+	else
+		reg |= RTL930X_FORCE_EN;
+
+	//if (tx_pause)
+		reg |= RTL930X_TX_PAUSE_EN;
+	//else
+	//	reg &= ~RTL930X_TX_PAUSE_EN;
+	//if (rx_pause)
+		reg |= RTL930X_RX_PAUSE_EN;
+	//else
+	//	reg &= ~RTL930X_RX_PAUSE_EN;
+
+	if (dsa_port_is_cpu(dp))
+		reg |= RTL930X_FORCE_EN;
+
+	pr_info("%s port %d, mode %x, speed %d, duplex %d, txpause %d, rxpause %d: set reg=%08x\n",
+		__func__, port, mode, speed, duplex, tx_pause, rx_pause, reg);
+
+	sw_w32(reg, priv->r->mac_force_mode_ctrl(port));
+
 
 	/* Restart TX/RX to port */
 	sw_w32_mask(0, 0x3, priv->r->mac_port_ctrl(port));
@@ -1373,7 +1415,7 @@ void rtl930x_fast_age(struct dsa_switch *ds, int port)
 
 	mutex_unlock(&priv->reg_mutex);
 }
-
+/*
 static int rtl930x_change_mtu(struct dsa_switch *ds, int port, int new_mtu)
 {
         struct rtl838x_switch_priv *priv = ds->priv;
@@ -1417,11 +1459,12 @@ static int rtl930x_change_mtu(struct dsa_switch *ds, int port, int new_mtu)
 
 static int rtl930x_max_mtu(struct dsa_switch *ds, int port)
 {
-        /* The max MTU is 10000 bytes, so we subtract the CPU tag
-         * and the max presented to the system is 9996 bytes.
-         */
+        // The max MTU is 10000 bytes, so we subtract the CPU tag
+         // and the max presented to the system is 9996 bytes.
+        // 
         return MAX_MTU-4;
 }
+*/
 
 static int rtl83xx_vlan_filtering(struct dsa_switch *ds, int port,
 				  bool vlan_filtering,
@@ -2333,6 +2376,6 @@ const struct dsa_switch_ops rtl930x_switch_ops = {
 	.port_pre_bridge_flags	= rtl83xx_port_pre_bridge_flags,
 	.port_bridge_flags	= rtl83xx_port_bridge_flags,
 
-        .port_change_mtu        = rtl930x_change_mtu,
-        .port_max_mtu           = rtl930x_max_mtu,
+        //.port_change_mtu        = rtl930x_change_mtu,
+        //.port_max_mtu           = rtl930x_max_mtu,
 };
