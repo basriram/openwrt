@@ -279,7 +279,7 @@ static int __init rtl83xx_mdio_probe(struct rtl838x_switch_priv *priv)
 	int ret;
 	u32 pn;
 
-	pr_info("Sri In %s\n", __func__);
+	pr_debug("In %s\n", __func__);
 	mii_np = of_find_compatible_node(NULL, NULL, "realtek,rtl838x-mdio");
 	if (mii_np) {
 		pr_debug("Found compatible MDIO node!\n");
@@ -347,11 +347,13 @@ static int __init rtl83xx_mdio_probe(struct rtl838x_switch_priv *priv)
 
 		if (of_property_read_u32(phy_node, "sds", &priv->ports[pn].sds_num))
 			priv->ports[pn].sds_num = -1;
-		pr_info("%s port %d has SDS %d\n", __func__, pn, priv->ports[pn].sds_num);
+		pr_debug("%s port %d has SDS %d\n", __func__, pn, priv->ports[pn].sds_num);
 
 		if (of_get_phy_mode(dn, &interface))
 			interface = PHY_INTERFACE_MODE_NA;
 		if (interface == PHY_INTERFACE_MODE_HSGMII)
+			priv->ports[pn].is2G5 = true;
+		if (interface == PHY_INTERFACE_MODE_2500BASEX)
 			priv->ports[pn].is2G5 = true;
 		if (interface == PHY_INTERFACE_MODE_USXGMII)
 			priv->ports[pn].is2G5 = priv->ports[pn].is10G = true;
@@ -367,7 +369,7 @@ static int __init rtl83xx_mdio_probe(struct rtl838x_switch_priv *priv)
 			priv->ports[pn].leds_on_this_port = of_property_count_u32_elems(led_node, led_set_str);
 			if (priv->ports[pn].leds_on_this_port > 4) {
 				dev_err(priv->dev, "led_set %d for port %d configuration is invalid\n", led_set, pn);
-				//return -ENODEV;
+				return -ENODEV;
 			}
 		}
 
@@ -381,22 +383,14 @@ static int __init rtl83xx_mdio_probe(struct rtl838x_switch_priv *priv)
 
 		if (priv->id >= 0x9300) {
 			priv->ports[pn].phy_is_integrated = false;
-			if (of_property_read_bool(phy_node, "phy-is-integrated") && 
-			    of_property_read_bool(phy_node, "sfp")) {
+			if (of_property_read_bool(phy_node, "phy-is-integrated")) {
 				priv->ports[pn].phy_is_integrated = true;
 				priv->ports[pn].phy = PHY_RTL930X_SDS;
-				pr_info("SRI in PHY is rtl930x sds  \n");
-			} else {
-				priv->ports[pn].phy = PHY_RTL8218B_EXT;
-				pr_info("SRI in PHY is rtl8218 ext \n");
-				continue;
-
 			}
 		} else {
 			if (of_property_read_bool(phy_node, "phy-is-integrated") &&
 			    !of_property_read_bool(phy_node, "sfp")) {
 				priv->ports[pn].phy = PHY_RTL8218B_INT;
-				pr_info("SRI in PHY is rtl8218int  \n");
 				continue;
 			}
 		}
@@ -404,14 +398,12 @@ static int __init rtl83xx_mdio_probe(struct rtl838x_switch_priv *priv)
 		if (!of_property_read_bool(phy_node, "phy-is-integrated") &&
 		    of_property_read_bool(phy_node, "sfp")) {
 			priv->ports[pn].phy = PHY_RTL8214FC;
-			pr_info("SRI in PHY is rtl8214FC ext \n");
 			continue;
 		}
 
 		if (!of_property_read_bool(phy_node, "phy-is-integrated") &&
 		    !of_property_read_bool(phy_node, "sfp")) {
 			priv->ports[pn].phy = PHY_RTL8218B_EXT;
-			pr_info("SRI in PHY is rtl8218B ext \n");
 			continue;
 		}
 	}
@@ -435,7 +427,7 @@ static int __init rtl83xx_mdio_probe(struct rtl838x_switch_priv *priv)
 		rtl8380_sds_power(26, 1);
 	}
 
-	pr_info("Sri %s done\n", __func__);
+	pr_debug("%s done\n", __func__);
 
 	return 0;
 }

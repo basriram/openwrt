@@ -6,7 +6,6 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/leds/common.h>
-#include <dt-bindings/thermal/thermal.h>
 
 / {
 	compatible = "zyxel,xgs1210-12", "realtek,rtl838x-soc";
@@ -222,14 +221,14 @@
 		/* SFP+ Ports */
 		phy26: ethernet-phy@26 {
 			reg = <26>;
-			compatible = "ethernet-phy-ieee802.3-c45";
+			compatible = "ethernet-phy-ieee802.3-c22";
 			phy-is-integrated;
 			sds = <8>;
 		};
 
 		phy27: ethernet-phy@27 {
 			reg = <27>;
-			compatible = "ethernet-phy-ieee802.3-c45";
+			compatible = "ethernet-phy-ieee802.3-c22";
 			phy-is-integrated;
 			sds = <9>;
 		};		
@@ -315,7 +314,7 @@
 		port@26 {
 			reg = <26>;
 			label = "lan11";
-			phy-mode = "1000base-x";
+			phy-mode = "10gbase-r";
 			phy-handle = <&phy26>;
 			sfp = <&sfp0>;
 			led-set = <2>;
@@ -325,7 +324,7 @@
 		port@27 {
 			reg = <27>;
 			label = "lan12";
-			phy-mode = "1000base-x";
+			phy-mode = "10gbase-r";
 			phy-handle = <&phy27>;
 			sfp = <&sfp1>;
 			led-set = <2>;
@@ -343,5 +342,3 @@
 		};
 	};
 };
-
-

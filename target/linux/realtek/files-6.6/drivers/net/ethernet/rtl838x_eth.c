@@ -781,7 +781,7 @@ static void rtl93xx_hw_en_rxtx(struct rtl838x_eth_priv *priv)
 {
 	/* Setup CPU-Port: RX Buffer truncated at DEFAULT_MTU Bytes (except for 930x to enable jumbo frames) */
 	if (priv->family_id == RTL9300_FAMILY_ID)
-		sw_w32((DEFAULT_MTU << 16) | RX_TRUNCATE_EN_93XX, priv->r->dma_if_ctrl);
+		sw_w32((DEFAULT_MTU << 16) , priv->r->dma_if_ctrl);
 	else 
 		sw_w32((DEFAULT_MTU << 16) | RX_TRUNCATE_EN_93XX, priv->r->dma_if_ctrl);
 
@@ -1401,6 +1401,9 @@ static void rtl838x_validate(struct phylink_config *config,
 	    state->interface != PHY_INTERFACE_MODE_GMII &&
 	    state->interface != PHY_INTERFACE_MODE_QSGMII &&
 	    state->interface != PHY_INTERFACE_MODE_INTERNAL &&
+    	    state->interface != PHY_INTERFACE_MODE_2500BASEX &&
+ 	    state->interface != PHY_INTERFACE_MODE_HSGMII &&
+ 	    state->interface != PHY_INTERFACE_MODE_10GBASER &&
 	    state->interface != PHY_INTERFACE_MODE_SGMII) {
 		bitmap_zero(supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
 		pr_err("Unsupported interface: %d\n", state->interface);
@@ -1863,8 +1866,10 @@ static int rtmdio_93xx_read(struct mii_bus *bus, int addr, int regnum)
 			return rtl931x_read_sds_phy(eth_priv->sds_id[addr],
 						    bus_priv->page[addr], regnum);
 	}
-
-	err = (*bus_priv->read_phy)(addr, bus_priv->page[addr], regnum, &val);
+	if (eth_priv->smi_bus_isc45[eth_priv->smi_bus[addr]])
+		err = rtl930x_read_phy_with_c45_flag(addr, bus_priv->page[addr], regnum, &val, true);
+	else
+		err = (*bus_priv->read_phy)(addr, bus_priv->page[addr], regnum, &val);
 	pr_debug("rd_PHY(adr=%d, pag=%d, reg=%d) = %d, err = %d\n",
 		 addr, bus_priv->page[addr], regnum, val, err);
 	return err ? err : val;
@@ -1992,6 +1997,190 @@ static int rtmdio_839x_reset(struct mii_bus *bus)
 	return 0;
 }
 
+int rtl9300_port_wait_ready(int port)
+{
+        int timeout = 100;
+        u32 val;
+
+        do {
+            rtl930x_read_mmd_phy(port, MDIO_MMD_VEND2, 0xa420, &val);
+            if ((val & 0x3) == 0x3)
+                   break;
+            mdelay(1);
+        } while (--timeout);
+
+        if (!timeout) {
+                pr_warn("%s PHY at port %d not ready\n", __func__, port);
+                return -EIO;
+        }
+        return 0;
+}
+
+
+static int rtl930x_setup_rtl8226(struct mii_bus *bus, int port)
+	{
+        u32 v, v0, reg_6A21_5;
+		u32  v1, v2, v3, adccal_offset_p0, adccal_offset_p1, adccal_offset_p2;
+     	u32 adccal_offset_p3, rg_lpf_cap_xg_p0, rg_lpf_cap_xg_p1, rg_lpf_cap_xg_p2;
+      	u32 rg_lpf_cap_xg_p3, rg_lpf_cap_p0, rg_lpf_cap_p1, rg_lpf_cap_p2, rg_lpf_cap_p3;
+		int phydev = port;
+		pr_info("%s config init of rtl9300 to setup 8266 SRI mdio addr %d\n", __func__, port);
+        // Check polling is turned off 
+        rtl9300_port_wait_ready(port);
+//The thermal detect function default is enabled. 
+//The user can set MMD 31 0xA436,data=0x817D and MMD 31 0xA438.12=0 to disable this function.
+        rtl930x_write_mmd_phy(port, MDIO_MMD_VEND2, 0xa436, 0x817d);
+        rtl930x_read_mmd_phy(port, MDIO_MMD_VEND2, 0xa438, &v);
+		v = v & ~BIT(12);
+		rtl930x_write_mmd_phy(port, MDIO_MMD_VEND2, 0xa438, v);
+
+        rtl930x_read_mmd_phy(port, MDIO_MMD_VEND2, 0xa438, &v);
+
+        pr_info("%s, port %d patch version %x\n", __func__, port, v);
+
+         rtl930x_read_mmd_phy(port, MDIO_MMD_VEND1, 0x6a21, &reg_6A21_5);
+        //Swap MDI pins 
+        rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, &v);
+
+        if (!(v & BIT(1))) {
+                pr_info("%s: MDI pins already swapped\n", __func__);
+        } else {
+			//Actually enable PIN swapping 
+			v0 = (v & 0xffe0) | 0x1;
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v0);
+			reg_6A21_5 |= BIT(5);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND1, 0x6a21, reg_6A21_5);
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, &adccal_offset_p0);
+
+			v1 = (v & 0xffe0) | 0x9;
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v1);
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, &adccal_offset_p1);
+
+			v2 = (v & 0xffe0) | 0x11;
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v2);
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, &adccal_offset_p2);
+
+			v3 = (v & 0xffe0) | 0x19;
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v3);
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, &adccal_offset_p3);
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbd5a, &v);
+			rg_lpf_cap_xg_p0 = v & 0x001f;
+			rg_lpf_cap_xg_p1 = v & 0x1f00;
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbd5c, &v);
+			rg_lpf_cap_xg_p2 = v & 0x001f;
+			rg_lpf_cap_xg_p3 = v & 0x1f00;
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xBC18, &v);
+			rg_lpf_cap_p0 = v & 0x001F;
+			rg_lpf_cap_p1 = v & 0x1F00;
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xBC1A, &v);
+			rg_lpf_cap_p2 = v & 0x001F;
+			rg_lpf_cap_p3 = v & 0x1F00;
+
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v0);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, adccal_offset_p3);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v1);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, adccal_offset_p2);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v2);
+
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, adccal_offset_p1);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd068, v3);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xd06a, adccal_offset_p0);
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbd5a, &v);
+			v = ( rg_lpf_cap_xg_p3 >> 8 ) | (rg_lpf_cap_xg_p2 << 8) | (v & 0xe0e0);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbd5a, v);
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbd5c, &v);
+			v = (rg_lpf_cap_xg_p1 >> 8) | (rg_lpf_cap_xg_p0 << 8) | (v & 0xe0e0);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbd5c, v);
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbc18, &v);
+			v = (rg_lpf_cap_p3 >> 8) | (rg_lpf_cap_p2 << 8) | (v & 0xe0e0);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbc18, v);
+
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbc1a, &v);
+			v = (rg_lpf_cap_p1 >>8) | (rg_lpf_cap_p0 << 8) | (v & 0xe0e0);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xbc1a, v);
+		}
+		if (false){
+			//Enable SGMII or HISGMII 
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND1, 0x697A, &v);
+			v &= ~0x3f;
+			v |= 0x1; // Various functions 0x1 to 0x5. Ox1 enables SGMII/HISGMII 0x0 enables 2500baseX+sgmii 
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND1, 0x697a, v);
+
+			// disable MDI cross-over mode
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xA430, &v);
+			v |= BIT(8)|BIT(9);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xA430, v);
+		
+
+			// Initially disable EEE advertisement, so we can properly turn it on later
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_EEE_ADV, &v);
+			v &= ~(MDIO_AN_EEE_ADV_100TX | MDIO_AN_EEE_ADV_1000T);
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_EEE_ADV, v);
+
+			// Disable 2.5GBit EEE advertisement
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_EEE_ADV2, &v);
+			v &= ~MDIO_EEE_2_5GT;
+			rtl930x_write_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_EEE_ADV2, v);
+
+			// auto neg code here SRI
+		rtl930x_read_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_ADVERTISE, &v);
+		pr_info("%s, port %d, advertise %x\n", __func__, port, v);
+		v |= ADVERTISE_10HALF;
+		v |= ADVERTISE_10FULL;
+		v |= ADVERTISE_100HALF;
+		v |= ADVERTISE_100FULL;
+		int ret;
+		ret = rtl930x_write_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_ADVERTISE, v);
+	pr_info("%s, port %d, ret %d, v %x	\n", __func__, port, ret, v);
+		/* Allow 1GBit */
+		rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xA412, &v);
+		pr_info("%s, port %d, v %x	\n", __func__, port, v);
+		v |= ADVERTISE_1000FULL;
+
+		ret = rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xA412, v);
+		pr_info("%s, port %d, ret %d, v %x	\n", __func__, port, ret, v);
+		/* Allow 2.5G */
+		rtl930x_read_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_10GBT_CTRL, &v);
+		pr_info("%s, port %d, v %x	\n", __func__, port, v);
+		v |= MDIO_AN_10GBT_CTRL_ADV2_5G;
+		ret = rtl930x_write_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_10GBT_CTRL, v);		
+		pr_info("%s, port %d, ret %d, v %x	\n", __func__, port, ret, v);
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_AN, MDIO_CTRL1, &v);
+	pr_info("%s, port %d, v %x	\n", __func__, port, v);
+			v |= MDIO_AN_CTRL1_ENABLE; /* Enable AN */
+			ret = rtl930x_write_mmd_phy(phydev, MDIO_MMD_AN, MDIO_CTRL1, v);
+
+	pr_info("%s, port %d, ret %d, v %x	\n", __func__, port, ret, v);
+			/* RestartAutoNegotiation */
+			rtl930x_read_mmd_phy(phydev, MDIO_MMD_VEND2, 0xA400, &v);
+			pr_info("%s, port %d, v %x	\n", __func__, port, v);
+			v |= BIT(9);
+			ret = rtl930x_write_mmd_phy(phydev, MDIO_MMD_VEND2, 0xA400, v);	
+	pr_info("%s, port %d, ret %d, v %x	\n", __func__, port, ret, v);
+
+	// Perform software reset and turn on auto-neg
+
+		//bit9-restart an, bit12-enable an, bit15-soft reset
+		pr_info("%s: resetting AN %d\n",__func__, rtl930x_write_mmd_phy(phydev, MDIO_MMD_AN, 0x0, 0x9200)); 
+		
+
+			// Enable Link Down Power Saving 
+			//phy_set_bits_mmd(phydev, MDIO_MMD_VEND2, RTL8226_MMD_MAC, RTL82XX_PAGE_MAC_LDPS_EN);
+			pr_info("%s SRI checking if 2.5gbps enabled on port %d\n", __func__, port);
+
+			int speed = 0;
+			rtl930x_read_phy(phydev+100, 0xa61, 0x13, &speed);
+			pr_info("%s, port %d, speed %x	\n", __func__, port, speed);
+		}
+        return 0;
+}
 u8 mac_type_bit[RTL930X_CPU_PORT] = {0, 0, 0, 0, 2, 2, 2, 2, 4, 4, 4, 4, 6, 6, 6, 6,
 				     8, 8, 8, 8, 10, 10, 10, 10, 12, 15, 18, 21};
 
@@ -2047,7 +2236,13 @@ static int rtmdio_930x_reset(struct mii_bus *bus)
 		case PHY_INTERFACE_MODE_10GBASER:
 			break;			/* Serdes: Value = 0 */
 		case PHY_INTERFACE_MODE_HSGMII:
+		case PHY_INTERFACE_MODE_2500BASEX:
 			private_poll_mask |= BIT(i);
+			v |= BIT(12);
+			v |= BIT(15);
+			if(false)
+				rtl930x_setup_rtl8226(bus, i);
+			uses_hisgmii = true;
 			fallthrough;
 		case PHY_INTERFACE_MODE_USXGMII:
 			v |= BIT(mac_type_bit[i]);
@@ -2083,21 +2278,21 @@ static int rtmdio_930x_reset(struct mii_bus *bus)
 		sw_w32(0x017FA414, RTL930X_SMI_10GPHY_POLLING_REG10_CFG);
 	}
 
-	pr_debug("%s: RTL930X_SMI_GLB_CTRL %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_GLB_CTRL %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_GLB_CTRL));
-	pr_debug("%s: RTL930X_SMI_PORT0_15_POLLING_SEL %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_PORT0_15_POLLING_SEL %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_PORT0_15_POLLING_SEL));
-	pr_debug("%s: RTL930X_SMI_PORT16_27_POLLING_SEL %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_PORT16_27_POLLING_SEL %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_PORT16_27_POLLING_SEL));
-	pr_debug("%s: RTL930X_SMI_MAC_TYPE_CTRL %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_MAC_TYPE_CTRL %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_MAC_TYPE_CTRL));
-	pr_debug("%s: RTL930X_SMI_10GPHY_POLLING_REG0_CFG %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_10GPHY_POLLING_REG0_CFG %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_10GPHY_POLLING_REG0_CFG));
-	pr_debug("%s: RTL930X_SMI_10GPHY_POLLING_REG9_CFG %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_10GPHY_POLLING_REG9_CFG %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_10GPHY_POLLING_REG9_CFG));
-	pr_debug("%s: RTL930X_SMI_10GPHY_POLLING_REG10_CFG %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_10GPHY_POLLING_REG10_CFG %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_10GPHY_POLLING_REG10_CFG));
-	pr_debug("%s: RTL930X_SMI_PRVTE_POLLING_CTRL %08x\n", __func__,
+	pr_info("%s: RTL930X_SMI_PRVTE_POLLING_CTRL %08x\n", __func__,
 		 sw_r32(RTL930X_SMI_PRVTE_POLLING_CTRL));
 
 	return 0;
@@ -2166,6 +2361,7 @@ static int rtmdio_931x_reset(struct mii_bus *bus)
 	return 0;
 }
 
+
 static int rtl931x_chip_init(struct rtl838x_eth_priv *priv)
 {
 	pr_info("In %s\n", __func__);
@@ -2206,8 +2402,7 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 {
 	struct device_node *mii_np, *dn;
 	struct rtl838x_bus_priv *bus_priv;
-	//u32 pn, mtu;
-	u32 pn;
+	u32 pn, mtu;
 	int i, ret;
 
 	pr_info("%s called\n", __func__);
@@ -2341,10 +2536,10 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 		if (of_get_phy_mode(dn, &priv->interfaces[pn]))
 			priv->interfaces[pn] = PHY_INTERFACE_MODE_NA;
 		pr_info("%s phy mode of port %d is %s\n", __func__, pn, phy_modes(priv->interfaces[pn]));
- 		//if (of_property_read_u32(dn, "max-frame-size", &mtu))
- 		//	continue;
- 		//priv->netdev->max_mtu = mtu;
- 		//pr_info("Max mtu set to %d for %s\n", priv->netdev->max_mtu, priv->netdev->name);
+ 		if (of_property_read_u32(dn, "max-frame-size", &mtu))
+ 			continue;
+ 		priv->netdev->max_mtu = mtu;
+ 		pr_info("Max mtu set to %d for %s\n", priv->netdev->max_mtu, priv->netdev->name);
 
 	}
 
@@ -2540,8 +2735,7 @@ static int __init rtl838x_eth_probe(struct platform_device *pdev)
 
 	dev->ethtool_ops = &rtl838x_ethtool_ops;
 	dev->min_mtu = ETH_ZLEN;
-//	dev->max_mtu = MAX_MTU;
-	dev->max_mtu = 1536;
+	dev->max_mtu = MAX_MTU;
 	dev->features = NETIF_F_RXCSUM | NETIF_F_HW_CSUM;
 	dev->hw_features = NETIF_F_RXCSUM;
 

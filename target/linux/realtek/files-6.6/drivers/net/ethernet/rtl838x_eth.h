@@ -419,8 +419,8 @@ struct rtl838x_bus_priv {
 	bool raw[64];
 	int (*read_mmd_phy)(u32 port, u32 addr, u32 reg, u32 *val);
 	int (*write_mmd_phy)(u32 port, u32 addr, u32 reg, u32 val);
-	int (*read_phy)(u32 port, u32 page, u32 reg, u32 *val);
-	int (*write_phy)(u32 port, u32 page, u32 reg, u32 val);
+	int (*read_phy)(u32 port, u32 page, u32 reg,  u32 *val);
+	int (*write_phy)(u32 port, u32 page, u32 reg,  u32 val);
 };
 
 struct rtl838x_eth_reg {
@@ -465,6 +465,7 @@ int rtl839x_read_phy(u32 port, u32 page, u32 reg, u32 *val);
 int rtl839x_read_mmd_phy(u32 port, u32 devnum, u32 regnum, u32 *val);
 int rtl839x_write_mmd_phy(u32 port, u32 devnum, u32 regnum, u32 val);
 int rtl930x_write_phy(u32 port, u32 page, u32 reg, u32 val);
+int rtl930x_read_phy_with_c45_flag(u32 port, u32 page, u32 reg, u32 *val, bool is_c45);
 int rtl930x_read_phy(u32 port, u32 page, u32 reg, u32 *val);
 int rtl931x_write_phy(u32 port, u32 page, u32 reg, u32 val);
 int rtl931x_read_phy(u32 port, u32 page, u32 reg, u32 *val);

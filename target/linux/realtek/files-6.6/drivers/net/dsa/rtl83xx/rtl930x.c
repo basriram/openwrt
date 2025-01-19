@@ -712,12 +712,16 @@ irqreturn_t rtl930x_switch_irq(int irq, void *dev_id)
 			/* Read the register twice because of issues with latency at least
 			 * with the external RTL8226 PHY on the XGS1210
 			 */
+			if (i == 24 || i == 25){
+				pr_info("%s: RTL930X_MAC_LINK_STS: %x\n", __func__, sw_r32(RTL930X_MAC_LINK_STS));
+			}
 			link = sw_r32(RTL930X_MAC_LINK_STS);
 			link = sw_r32(RTL930X_MAC_LINK_STS);
-			if (link & BIT(i))
+			if (link & BIT(i)) 
 				dsa_port_phylink_mac_change(ds, i, true);
-			else
-				dsa_port_phylink_mac_change(ds, i, false);
+			else 
+				dsa_port_phylink_mac_change(ds, i, false); 
+			
 		}
 	}
 
@@ -729,7 +733,7 @@ int rtl930x_write_phy(u32 port, u32 page, u32 reg, u32 val)
 	u32 v;
 	int err = 0;
 
-	pr_debug("%s: port %d, page: %d, reg: %x, val: %x\n", __func__, port, page, reg, val);
+	
 
 	if (port > 63 || page > 4095 || reg > 31)
 		return -ENOTSUPP;
@@ -740,6 +744,11 @@ int rtl930x_write_phy(u32 port, u32 page, u32 reg, u32 val)
 	sw_w32(BIT(port), RTL930X_SMI_ACCESS_PHY_CTRL_0);
 	sw_w32_mask(0xffff << 16, val << 16, RTL930X_SMI_ACCESS_PHY_CTRL_2);
 	v = reg << 20 | page << 3 | 0x1f << 15 | BIT(2) | BIT(0);
+
+	//if (port == 0x19) {
+//		v = v|2;
+//	}
+
 	sw_w32(v, RTL930X_SMI_ACCESS_PHY_CTRL_1);
 
 	do {
@@ -748,6 +757,44 @@ int rtl930x_write_phy(u32 port, u32 page, u32 reg, u32 val)
 
 	if (v & 0x2)
 		err = -EIO;
+//	if (port == 24 || port == 25)
+//		pr_info("%s: port %d, page: %x, reg: %x, val: %x, err: %d\n", __func__, port, page, reg, val, err);
+
+	mutex_unlock(&smi_lock);
+
+	return err;
+}
+
+int rtl930x_read_phy_with_c45_flag(u32 port, u32 page, u32 reg, u32 *val, bool is_c45)
+{
+	u32 v;
+	int err = 0;
+
+	v = reg << 20 | page << 3 | 0x1f << 15 | 1;
+	if (is_c45){
+		v = v|2;
+	}
+
+	if (port > 63 || page > 4095 || reg > 31)
+		return -ENOTSUPP;
+
+	mutex_lock(&smi_lock);
+
+	sw_w32_mask(0xffff << 16, port << 16, RTL930X_SMI_ACCESS_PHY_CTRL_2);
+
+	sw_w32(v, RTL930X_SMI_ACCESS_PHY_CTRL_1);
+
+	do {
+		v = sw_r32(RTL930X_SMI_ACCESS_PHY_CTRL_1);
+	} while ( v & 0x1);
+
+	if (v & BIT(25)) {
+		pr_warn("%s Error reading phy %x, register %x, page %x\n", __func__, port, reg, page);
+		err = -EIO;
+	}
+	*val = (sw_r32(RTL930X_SMI_ACCESS_PHY_CTRL_2) & 0xffff);
+//	if (port == 24 || port == 25)
+//		pr_info("%s: port %d, page: %x, reg: %x, val: %x\n", __func__, port, page, reg, *val);
 
 	mutex_unlock(&smi_lock);
 
@@ -756,34 +803,9 @@ int rtl930x_write_phy(u32 port, u32 page, u32 reg, u32 val)
 
 int rtl930x_read_phy(u32 port, u32 page, u32 reg, u32 *val)
 {
-	u32 v;
-	int err = 0;
-
-	if (port > 63 || page > 4095 || reg > 31)
-		return -ENOTSUPP;
-
-	mutex_lock(&smi_lock);
-
-	sw_w32_mask(0xffff << 16, port << 16, RTL930X_SMI_ACCESS_PHY_CTRL_2);
-	v = reg << 20 | page << 3 | 0x1f << 15 | 1;
-	sw_w32(v, RTL930X_SMI_ACCESS_PHY_CTRL_1);
-
-	do {
-		v = sw_r32(RTL930X_SMI_ACCESS_PHY_CTRL_1);
-	} while ( v & 0x1);
-
-	if (v & BIT(25)) {
-		pr_info("Error reading phy %d, register %d\n", port, reg);
-		err = -EIO;
-	}
-	*val = (sw_r32(RTL930X_SMI_ACCESS_PHY_CTRL_2) & 0xffff);
-
-	pr_debug("%s: port %d, page: %d, reg: %x, val: %x\n", __func__, port, page, reg, *val);
-
-	mutex_unlock(&smi_lock);
-
-	return err;
+	return rtl930x_read_phy_with_c45_flag(port, page, reg, val, false);
 }
+
 
 /* Write to an mmd register of the PHY */
 int rtl930x_write_mmd_phy(u32 port, u32 devnum, u32 regnum, u32 val)
@@ -808,8 +830,8 @@ int rtl930x_write_mmd_phy(u32 port, u32 devnum, u32 regnum, u32 val)
 	do {
 		v = sw_r32(RTL930X_SMI_ACCESS_PHY_CTRL_1);
 	} while (v & BIT(0));
-
-	pr_debug("%s: port %d, regnum: %x, val: %x (err %d)\n", __func__, port, regnum, val, err);
+//	if (port == 24 || port == 25)
+//		pr_info("%s: port %d, devnum: %x, regnum: %x, val: %x (err %d)\n", __func__, port, devnum, regnum, val, err);
 	mutex_unlock(&smi_lock);
 	return err;
 }
@@ -836,7 +858,8 @@ int rtl930x_read_mmd_phy(u32 port, u32 devnum, u32 regnum, u32 *val)
 	} while (v & BIT(0));
 	/* There is no error-checking via BIT 25 of v, as it does not seem to be set correctly */
 	*val = (sw_r32(RTL930X_SMI_ACCESS_PHY_CTRL_2) & 0xffff);
-	pr_debug("%s: port %d, regnum: %x, val: %x (err %d)\n", __func__, port, regnum, *val, err);
+//	if (port == 24 || port == 25)
+//		pr_info("%s: port %d, devnum: %x, regnum: %x, val: %x (err %d)\n", __func__, port, devnum, regnum, *val, err);
 
 	mutex_unlock(&smi_lock);
 
