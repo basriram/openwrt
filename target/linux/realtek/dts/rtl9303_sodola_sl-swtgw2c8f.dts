@@ -305,7 +305,7 @@
 		port@0 {
 			reg = <0>;
 			label = "lan1";
-			phy-handle = <&phy0>;
+			pseudo-phy-handle = <&phy0>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp0>;
 			max-frame-size = <10000>;
@@ -315,7 +315,7 @@
 		port@8 {
 			reg = <8>;
 			label = "lan2";
-			phy-handle = <&phy8>;
+			pseudo-phy-handle = <&phy8>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp1>;
 			max-frame-size = <10000>;
@@ -325,7 +325,7 @@
 		port@10 {
 			reg = <16>;
 			label = "lan3";
-			phy-handle = <&phy16>;
+			pseudo-phy-handle = <&phy16>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp2>;
 			max-frame-size = <10000>;
@@ -335,7 +335,7 @@
 		port@14 {
 			reg = <20>;
 			label = "lan4";
-			phy-handle = <&phy20>;
+			pseudo-phy-handle = <&phy20>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp3>;
 			max-frame-size = <10000>;
@@ -345,7 +345,7 @@
 		port@18 {
 			reg = <24>;
 			label = "lan5";
-			phy-handle = <&phy24>;
+			pseudo-phy-handle = <&phy24>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp4>;
 			max-frame-size = <10000>;
@@ -355,7 +355,7 @@
 		port@19 {
 			reg = <25>;
 			label = "lan6";
-			phy-handle = <&phy25>;
+			pseudo-phy-handle = <&phy25>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp5>;
 			max-frame-size = <10000>;
@@ -365,7 +365,7 @@
 		port@1a {
 			reg = <26>;
 			label = "lan7";
-			phy-handle = <&phy26>;
+			pseudo-phy-handle = <&phy26>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp6>;
 			max-frame-size = <10000>;
@@ -375,7 +375,7 @@
 		port@1b {
 			reg = <27>;
 			label = "lan8";
-			phy-handle = <&phy27>;
+			pseudo-phy-handle = <&phy27>;
 			phy-mode = "10gbase-r";
 			sfp = <&sfp7>;
 			max-frame-size = <10000>;

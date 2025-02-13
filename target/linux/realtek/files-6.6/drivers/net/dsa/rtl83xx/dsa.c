@@ -326,8 +326,7 @@ static int rtl93xx_get_sds(struct phy_device *phydev)
 		if (of_property_read_u32(dn, "sds", &sds_num))
 			sds_num = -1;
 	} else {
-		pr_info("%s SRISRI  error no dt node here \n", __func__);
-		//dev_err(dev, "No DT node.\n");
+		dev_err(dev, "No DT node.\n");
 		return -1;
 	}
 
@@ -507,7 +506,7 @@ static void rtl83xx_pcs_get_state(struct phylink_pcs *pcs,
 	link = priv->r->get_port_reg_le(priv->r->mac_link_sts);
 	if (link & BIT_ULL(port))
 		state->link = 1;
-	pr_info("%s: sri link state port %d: %llx\n", __func__, port, link & BIT_ULL(port));
+	pr_debug("%s: link state port %d: %llx\n", __func__, port, link & BIT_ULL(port));
 
 	state->duplex = 0;
 	if (priv->r->get_port_reg_le(priv->r->mac_link_dup_sts) & BIT_ULL(port))
@@ -830,11 +829,14 @@ static void rtl93xx_phylink_mac_config(struct dsa_switch *ds, int port,
 	sds_num = priv->ports[port].sds_num;
 	pr_info("%s SDS is %d\n", __func__, sds_num);
 	
-	if (state->interface == PHY_INTERFACE_MODE_1000BASEX ||
-     	state->interface == PHY_INTERFACE_MODE_10GBASER)
+	if (sds_num >= 0){ 
+	    if (state->interface == PHY_INTERFACE_MODE_1000BASEX ||
+	         state->interface == PHY_INTERFACE_MODE_SGMII ||
+     	         state->interface == PHY_INTERFACE_MODE_10GBASER)
 			rtl9300_serdes_setup(port, sds_num, state->interface);
-		else if (state->interface == PHY_INTERFACE_MODE_HSGMII)
+	    else if (state->interface == PHY_INTERFACE_MODE_HSGMII)
 			 rtl9300_configure_rtl8266(port, sds_num, PHY_INTERFACE_MODE_HSGMII);
+	}
 }
 
 static void rtl83xx_phylink_mac_link_down(struct dsa_switch *ds, int port,
@@ -952,20 +954,18 @@ static void rtl93xx_phylink_mac_link_up(struct dsa_switch *ds, int port,
 	if (sds_num > 0){
 	      if (interface == PHY_INTERFACE_MODE_HSGMII || interface == PHY_INTERFACE_MODE_2500BASEX) {
 			int val = 0;
-			 rtl930x_read_phy(port+100, 0xa43, 0x12, &val);
-			 pr_info("%s SRI port speed from a43/12 is %x (bit1=2.5g)\n", __func__, val);
-			 rtl930x_read_phy(port+100, 0xa5d, 0x13, &val);
-			 pr_info("%s SRI port speed from a5d/13 is %x\n", __func__, val);
+			 rtl930x_read_phy(port, 0xa43, 0x12, &val);
+			 rtl930x_read_phy(port, 0xa5d, 0x13, &val);
 			rtl930x_read_mmd_phy(port, MDIO_MMD_VEND1, 0x7580, &val);
 			//rtl930x_read_mmd_phy
-			pr_info("%s SRI mmd vend1 0x7580 %x (0x12=hsg 0x16=25basex)\n", __func__, val);
 			rtl9300_rtl8226_mode_set(port, sds_num, PHY_INTERFACE_MODE_HSGMII);
 		//	if ((speed == SPEED_2500))
 		//	rtl9300_rtl8226_mode_set(port, sds_num, PHY_INTERFACE_MODE_HSGMII);
 		//	if ((speed != SPEED_2500))
 		//		rtl9300_rtl8226_mode_set(port, sds_num, PHY_INTERFACE_MODE_HSGMII);
 	      } else if (interface == PHY_INTERFACE_MODE_10GBASER || 
-		  			interface == PHY_INTERFACE_MODE_1000BASEX){
+		      	 interface == PHY_INTERFACE_MODE_SGMII ||
+		      	 interface == PHY_INTERFACE_MODE_1000BASEX){
 		        rtl9300_rtl8226_mode_set(port, sds_num, interface);
 	      }
 	}

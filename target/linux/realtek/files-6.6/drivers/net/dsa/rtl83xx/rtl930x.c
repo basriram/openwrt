@@ -712,16 +712,12 @@ irqreturn_t rtl930x_switch_irq(int irq, void *dev_id)
 			/* Read the register twice because of issues with latency at least
 			 * with the external RTL8226 PHY on the XGS1210
 			 */
-			if (i == 24 || i == 25){
-				pr_info("%s: RTL930X_MAC_LINK_STS: %x\n", __func__, sw_r32(RTL930X_MAC_LINK_STS));
-			}
 			link = sw_r32(RTL930X_MAC_LINK_STS);
 			link = sw_r32(RTL930X_MAC_LINK_STS);
-			if (link & BIT(i)) 
-				dsa_port_phylink_mac_change(ds, i, true);
-			else 
-				dsa_port_phylink_mac_change(ds, i, false); 
-			
+                       if (link & BIT(i))
+                               dsa_port_phylink_mac_change(ds, i, true);
+                       else
+                               dsa_port_phylink_mac_change(ds, i, false);
 		}
 	}
 

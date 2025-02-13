@@ -230,7 +230,6 @@ static int resume_polling(u64 saved_state)
 
 int rtl821x_match_phy_device(struct phy_device *phydev)
 {
-	pr_info("Sri inside match phy dev %d\n", phydev->phy_id);
 	u64 poll_state;
 	int rawpage, port = phydev->mdio.addr & ~3;
 	int oldpage, chip_mode, chip_cfg_mode;
@@ -459,10 +458,7 @@ int rtl930x_write_sds_phy(int phy_addr, int page, int phy_reg, u16 v)
 	sw_w32(v, RTL930X_SDS_INDACS_DATA);
 	cmd = phy_addr << 2 | page << 7 | phy_reg << 13 | 0x3;
 
-	if (phy_addr == 6 || phy_addr == 7) {
-		pr_info("%s port:%d, page:%x, phy_reg:%x, cmd:%x, val:%x\n", __func__, phy_addr, page, phy_reg, cmd, v);
-	}
-
+	pr_debug("%s port:%d, page:%x, phy_reg:%x, cmd:%x, val:%x\n", __func__, phy_addr, page, phy_reg, cmd, v);
 
 	sw_w32(cmd, RTL930X_SDS_INDACS_CMD);
 
@@ -2082,6 +2078,7 @@ void rtl9300_sds_tx_config(int sds, phy_interface_t phy_if)
 
 	switch(phy_if) {
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_SGMII:
 		pre_amp = 0x1;
 		main_amp = 0x9;
 		post_amp = 0x1;
@@ -2636,7 +2633,9 @@ void rtl9300_do_rx_calibration_1(int sds, phy_interface_t phy_mode)
 
 	/* TODO: make this work for DAC cables of different lengths */
 	/* For a 10GBit serdes wit Fibre, SDS 8 or 9 */
-	if (phy_mode == PHY_INTERFACE_MODE_10GBASER || PHY_INTERFACE_MODE_1000BASEX)
+	if (phy_mode == PHY_INTERFACE_MODE_10GBASER || 
+	    phy_mode == PHY_INTERFACE_MODE_1000BASEX ||
+	    phy_mode == PHY_INTERFACE_MODE_SGMII)
 		rtl9300_sds_field_w(sds, 0x2e, 0x16,  3,  2, 0x02);
 	else
 		pr_err("%s not PHY-based or SerDes, implement DAC!\n", __func__);
@@ -2734,7 +2733,9 @@ void rtl9300_sds_rxcal_3_1(int sds_num, phy_interface_t phy_mode)
 	pr_info("start_1.3.1");
 
 	/* ##1.3.1 */
-	if (phy_mode != PHY_INTERFACE_MODE_10GBASER && phy_mode != PHY_INTERFACE_MODE_1000BASEX)
+	if (phy_mode != PHY_INTERFACE_MODE_10GBASER && 
+   	    phy_mode != PHY_INTERFACE_MODE_1000BASEX &&
+	    phy_mode != PHY_INTERFACE_MODE_SGMII)
 		rtl9300_sds_field_w(sds_num, 0x2e, 0xc, 8, 8, 0);
 
 	rtl9300_sds_field_w(sds_num, 0x2e, 0x17, 7, 7, 0x0);
@@ -2750,7 +2751,9 @@ void rtl9300_sds_rxcal_3_2(int sds_num, phy_interface_t phy_mode)
 	bool eq_hold_enabled;
 	int i;
 
-	if (phy_mode == PHY_INTERFACE_MODE_10GBASER || phy_mode == PHY_INTERFACE_MODE_1000BASEX) {
+	if (phy_mode == PHY_INTERFACE_MODE_10GBASER || 
+	    phy_mode == PHY_INTERFACE_MODE_1000BASEX ||
+	    phy_mode == PHY_INTERFACE_MODE_SGMII) {
 		/* rtl9300_rxCaliConf_serdes_myParam */
 		dac_long_cable_offset = 3;
 		eq_hold_enabled = true;
@@ -2760,7 +2763,7 @@ void rtl9300_sds_rxcal_3_2(int sds_num, phy_interface_t phy_mode)
 		eq_hold_enabled = false;
 	}
 
-	if (phy_mode == PHY_INTERFACE_MODE_1000BASEX)
+	if (phy_mode != PHY_INTERFACE_MODE_10GBASER)
 		pr_warn("%s: LEQ only valid for 10GR!\n", __func__);
 
 	pr_info("start_1.3.2");
@@ -2775,7 +2778,9 @@ void rtl9300_sds_rxcal_3_2(int sds_num, phy_interface_t phy_mode)
 
 	pr_info("sum10:%u, avg10:%u, int10:%u", sum10, avg10, int10);
 
-	if (phy_mode == PHY_INTERFACE_MODE_10GBASER || phy_mode == PHY_INTERFACE_MODE_1000BASEX) {
+	if (phy_mode == PHY_INTERFACE_MODE_10GBASER || 
+	    phy_mode == PHY_INTERFACE_MODE_1000BASEX ||
+	    phy_mode == PHY_INTERFACE_MODE_SGMII) {
 		if (dac_long_cable_offset) {
 			rtl9300_sds_rxcal_leq_offset_manual(sds_num, 1, dac_long_cable_offset);
 			rtl9300_sds_field_w(sds_num, 0x2e, 0x17, 7, 7, eq_hold_enabled);
@@ -2805,7 +2810,9 @@ void rtl9300_do_rx_calibration_3(int sds_num, phy_interface_t phy_mode)
 {
 	rtl9300_sds_rxcal_3_1(sds_num, phy_mode);
 
-	if (phy_mode == PHY_INTERFACE_MODE_10GBASER || phy_mode == PHY_INTERFACE_MODE_1000BASEX)
+	if (phy_mode == PHY_INTERFACE_MODE_10GBASER ||
+	    phy_mode == PHY_INTERFACE_MODE_1000BASEX ||
+	    phy_mode == PHY_INTERFACE_MODE_SGMII)
 		rtl9300_sds_rxcal_3_2(sds_num, phy_mode);
 }
 
@@ -2928,6 +2935,7 @@ int rtl9300_sds_sym_err_reset(int sds_num, phy_interface_t phy_mode)
 		break;
 
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_SGMII:
 		rtl9300_sds_field_w(sds_num, 0x1, 24, 2, 0, 0);
 		rtl9300_sds_field_w(sds_num, 0x1, 3, 15, 8, 0);
 		rtl9300_sds_field_w(sds_num, 0x1, 2, 15, 0, 0);
@@ -2949,6 +2957,7 @@ u32 rtl9300_sds_sym_err_get(int sds_num, phy_interface_t phy_mode)
 	case PHY_INTERFACE_MODE_XGMII:
 		break;
 	case PHY_INTERFACE_MODE_HSGMII:
+	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_2500BASEX:
 	case PHY_INTERFACE_MODE_1000BASEX:
 	case PHY_INTERFACE_MODE_10GBASER:
@@ -2976,6 +2985,7 @@ int rtl9300_sds_check_calibration(int sds_num, phy_interface_t phy_mode)
 
 	switch (phy_mode) {
 	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_XGMII:
 		if ((errors2 - errors1 > 100) ||
 		    (errors1 >= 0xffff00) || (errors2 >= 0xffff00)) {
@@ -3156,7 +3166,6 @@ static int rtl9300_rtl8226_phy_setup(struct phy_device *phydev)
         u32 v, v0, v1, v2, v3, reg_6A21_5, adccal_offset_p0, adccal_offset_p1, adccal_offset_p2;
         u32 adccal_offset_p3, rg_lpf_cap_xg_p0, rg_lpf_cap_xg_p1, rg_lpf_cap_xg_p2;
         u32 rg_lpf_cap_xg_p3, rg_lpf_cap_p0, rg_lpf_cap_p1, rg_lpf_cap_p2, rg_lpf_cap_p3;
-		pr_info("%s config init of rtl9300 to setup 8266 SRI mdio addr %d\n", __func__, phydev->mdio.addr);
         // Check polling is turned off 
         rtl8266_wait_ready(phydev);
 
@@ -3690,8 +3699,6 @@ static int rtl9300_rtl8218d_phy_setup(struct phy_device *phydev, int phy_mode)
 	rtl8218d_serdes_mode_get(phydev);
 
 	model = rtl8218d_serdes_model_get(phydev);
-
-	pr_info("Sri inside 8218d phy setup\n");
 
 	if (model & BIT(7)) {  /* Is RTL8218D_NMP? */
 		switch(phy_mode) {
@@ -4569,7 +4576,6 @@ static int rtl8218d_phy_probe(struct phy_device *phydev)
 		/* Configuration must be done while patching still possible */
 /* TODO:		return configure_rtl8218d(phydev); */
 	}
-	pr_info("Sri end of 8218d probe\n");
 	return 0;
 }
 

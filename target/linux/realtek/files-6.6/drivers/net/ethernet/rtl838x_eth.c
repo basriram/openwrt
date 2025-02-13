@@ -2024,7 +2024,6 @@ static int rtl930x_setup_rtl8226(struct mii_bus *bus, int port)
      	u32 adccal_offset_p3, rg_lpf_cap_xg_p0, rg_lpf_cap_xg_p1, rg_lpf_cap_xg_p2;
       	u32 rg_lpf_cap_xg_p3, rg_lpf_cap_p0, rg_lpf_cap_p1, rg_lpf_cap_p2, rg_lpf_cap_p3;
 		int phydev = port;
-		pr_info("%s config init of rtl9300 to setup 8266 SRI mdio addr %d\n", __func__, port);
         // Check polling is turned off 
         rtl9300_port_wait_ready(port);
 //The thermal detect function default is enabled. 
@@ -2129,7 +2128,6 @@ static int rtl930x_setup_rtl8226(struct mii_bus *bus, int port)
 			v &= ~MDIO_EEE_2_5GT;
 			rtl930x_write_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_EEE_ADV2, v);
 
-			// auto neg code here SRI
 		rtl930x_read_mmd_phy(phydev, MDIO_MMD_AN, MDIO_AN_ADVERTISE, &v);
 		pr_info("%s, port %d, advertise %x\n", __func__, port, v);
 		v |= ADVERTISE_10HALF;
@@ -2173,10 +2171,8 @@ static int rtl930x_setup_rtl8226(struct mii_bus *bus, int port)
 
 			// Enable Link Down Power Saving 
 			//phy_set_bits_mmd(phydev, MDIO_MMD_VEND2, RTL8226_MMD_MAC, RTL82XX_PAGE_MAC_LDPS_EN);
-			pr_info("%s SRI checking if 2.5gbps enabled on port %d\n", __func__, port);
-
 			int speed = 0;
-			rtl930x_read_phy(phydev+100, 0xa61, 0x13, &speed);
+			rtl930x_read_phy(phydev, 0xa61, 0x13, &speed);
 			pr_info("%s, port %d, speed %x	\n", __func__, port, speed);
 		}
         return 0;
@@ -2431,7 +2427,6 @@ static int rtl838x_mdio_init(struct rtl838x_eth_priv *priv)
 		bus_priv->raw[i] = false;
 	}
 	bus_priv->extaddr = -1;
-	pr_info("Sri family id: %4x \n", priv->family_id);
 
 	switch(priv->family_id) {
 	case RTL8380_FAMILY_ID:
